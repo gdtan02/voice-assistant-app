@@ -31,10 +31,12 @@ async def websocket_endpoint(websocket: WebSocket):
         print("WebSocket connection established: {client_id}")
         
         while True:
-            message = await websocket.receive_text()
-            message_type = message.get("type")
+            message_text = await websocket.receive_text()
             
             try: 
+                message = json.loads(message_text)
+                message_type = message.get("type")
+                
                 # TODO: Check if it supports audio-streaming
                 # Audio input activation
                 if message_type == "audio":

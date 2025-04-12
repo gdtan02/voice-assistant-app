@@ -175,6 +175,28 @@
         .noise-medium {
             background-color: #FFC107;
         }
+        .server-url-container {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .server-url-input {
+            padding: 8px 12px;
+            width: 300px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+            margin-right: 10px;
+        }
+        .connect-button {
+            padding: 8px 12px;
+            background-color: #2E7D32;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .connect-button:hover {
+            background-color: #1B5E20;
+        }
     </style>
 </head>
 <body>
@@ -183,6 +205,11 @@
     </header>
     
     <div class="container">
+        <div class="server-url-container">
+            <input type="text" id="serverUrlInput" class="server-url-input" value="ws://localhost:8000/ws" placeholder="WebSocket URL (e.g., ws://localhost:8000/ws)">
+            <button id="connectButton" class="connect-button">Connect</button>
+        </div>
+
         <div class="status">
             <span class="connection-indicator disconnected" id="connectionIndicator"></span>
             <span id="statusText">Disconnected</span>
@@ -214,7 +241,7 @@
         
         <div class="conversation" id="conversation">
             <div class="message assistant-message">
-                Hello! I'm your DAX Assistant. Press the microphone button and say "Hey Crab" to activate me.
+                Hello! I'm your DAX Assistant. First, connect to the server, then press the microphone button and say "Hey Crab" to activate me.
             </div>
         </div>
     </div>
@@ -222,6 +249,8 @@
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             // Elements
+            const serverUrlInput = document.getElementById('serverUrlInput');
+            const connectButton = document.getElementById('connectButton');
             const micButton = document.getElementById('micButton');
             const recordingStatus = document.getElementById('recordingStatus');
             const conversation = document.getElementById('conversation');
@@ -253,59 +282,97 @@
             
             // Connect to WebSocket server
             function connectWebSocket() {
+                // Get server URL from input
+                const serverUrl = serverUrlInput.value.trim();
+                
+                if (!serverUrl) {
+                    alert('Please enter a valid WebSocket URL');
+                    return;
+                }
+                
                 // Update connection status to "connecting"
                 connectionIndicator.className = 'connection-indicator connecting';
                 statusText.textContent = 'Connecting...';
                 
+                // Close existing connection if any
+                if (websocket && websocket.readyState !== WebSocket.CLOSED) {
+                    websocket.close();
+                }
+                
                 // Create WebSocket connection
-                // Replace with your actual server URL
-                websocket = new WebSocket('wss://localhost:8000/ws');
-                
-                websocket.onopen = () => {
-                    // Update connection status to "connected"
-                    connectionIndicator.className = 'connection-indicator connected';
-                    statusText.textContent = 'Connected';
+                try {
+                    console.log(`Connecting to: ${serverUrl}`);
+                    websocket = new WebSocket(serverUrl);
                     
-                    // Add message to conversation
-                    addMessage('Connected to DAX Assistant server. Say "Hey Crab" to activate.', 'assistant');
-                };
-                
-                websocket.onmessage = (event) => {
-                    try {
-                        const message = JSON.parse(event.data);
+                    websocket.onopen = () => {
+                        // Update connection status to "connected"
+                        connectionIndicator.className = 'connection-indicator connected';
+                        statusText.textContent = 'Connected';
                         
-                        if (message.type === 'speech') {
-                            // Add message to conversation
-                            addMessage(message.text, 'assistant');
-                            
-                            // Play audio if provided
-                            if (message.audio) {
-                                playAudio(message.audio);
-                            } else {
-                                // Use browser's TTS as fallback
-                                speakText(message.text);
-                            }
-                        }
-                    } catch (error) {
-                        console.error('Error parsing WebSocket message:', error);
-                    }
-                };
-                
-                websocket.onclose = () => {
-                    // Update connection status to "disconnected"
-                    connectionIndicator.className = 'connection-indicator disconnected';
-                    statusText.textContent = 'Disconnected';
+                        // Add message to conversation
+                        addMessage('Connected to DAX Assistant server. Say "Hey Crab" to activate.', 'assistant');
+                        
+                        // Enable buttons
+                        micButton.disabled = false;
+                        newOrderButton.disabled = false;
+                        trafficAlertButton.disabled = false;
+                    };
                     
-                    // Try to reconnect after 3 seconds
-                    setTimeout(connectWebSocket, 3000);
-                };
-                
-                websocket.onerror = (error) => {
-                    console.error('WebSocket error:', error);
-                    // Update connection status to "disconnected"
+                    websocket.onmessage = (event) => {
+                        try {
+                            console.log("Received message:", event.data);
+                            const message = JSON.parse(event.data);
+                            
+                            if (message.type === 'speech') {
+                                // Add message to conversation
+                                addMessage(message.text, 'assistant');
+                                
+                                // Play audio if provided
+                                if (message.audio && message.audio !== "") {
+                                    playAudio(message.audio);
+                                } else {
+                                    // Use browser's TTS as fallback
+                                    speakText(message.text);
+                                }
+                            }
+                        } catch (error) {
+                            console.error('Error parsing WebSocket message:', error);
+                            console.log('Raw message:', event.data);
+                        }
+                    };
+                    
+                    websocket.onclose = () => {
+                        // Update connection status to "disconnected"
+                        connectionIndicator.className = 'connection-indicator disconnected';
+                        statusText.textContent = 'Disconnected';
+                        
+                        // Disable buttons
+                        micButton.disabled = true;
+                        newOrderButton.disabled = true;
+                        trafficAlertButton.disabled = true;
+                        
+                        addMessage('Connection to server closed. Please reconnect.', 'assistant');
+                    };
+                    
+                    websocket.onerror = (error) => {
+                        console.error('WebSocket error:', error);
+                        // Update connection status to "disconnected"
+                        connectionIndicator.className = 'connection-indicator disconnected';
+                        statusText.textContent = 'Connection error';
+                        
+                        // Disable buttons
+                        micButton.disabled = true;
+                        newOrderButton.disabled = true;
+                        trafficAlertButton.disabled = true;
+                        
+                        addMessage('Error connecting to server. Please check the URL and try again.', 'assistant');
+                    };
+                } catch (error) {
+                    console.error('Failed to create WebSocket:', error);
                     connectionIndicator.className = 'connection-indicator disconnected';
-                    statusText.textContent = 'Connection error';
-                };
+                    statusText.textContent = 'Connection failed';
+                    addMessage('Failed to create WebSocket connection. Please check the URL format.', 'assistant');
+                }
             }
             
             // Initialize audio context and analyser
@@ -360,6 +427,11 @@
             
             // Start recording audio
             function startRecording() {
+                if (!websocket || websocket.readyState !== WebSocket.OPEN) {
+                    addMessage('Error: Not connected to server. Please connect first.', 'assistant');
+                    return;
+                }
+                
                 if (!mediaRecorder) {
                     initAudio().then((success) => {
                         if (success) {
@@ -426,6 +498,9 @@
                         timestamp: Date.now()
                     };
                     
+                    // Log message (for debugging)
+                    console.log("Sending audio message:", message);
+                    
                     // Send to server
                     websocket.send(JSON.stringify(message));
                     
@@ -452,6 +527,9 @@
                     timestamp: Date.now()
                 };
                 
+                // Log message (for debugging)
+                console.log("Sending event:", message);
+                
                 // Send to server
                 websocket.send(JSON.stringify(message));
                 
@@ -466,11 +544,17 @@
                     const audio = new Audio(`data:audio/wav;base64,${base64Audio}`);
                     
                     // Play audio
-                    audio.play();
+                    audio.play().catch(err => {
+                        console.error('Error playing audio:', err);
+                        // Fallback to browser TTS
+                        speakText(message.text);
+                    });
                 } catch (error) {
-                    console.error('Error playing audio:', error);
+                    console.error('Error setting up audio playback:', error);
                     // Fallback to browser TTS
-                    speakText(message.text);
+                    if (message && message.text) {
+                        speakText(message.text);
+                    }
                 }
             }
             
@@ -557,7 +641,23 @@
                 animationFrame = requestAnimationFrame(updateVisualizer);
             }
             
+            // Disable buttons initially until connected
+            micButton.disabled = true;
+            newOrderButton.disabled = true;
+            trafficAlertButton.disabled = true;
+            
             // Event listeners
+            connectButton.addEventListener('click', () => {
+                connectWebSocket();
+            });
+            
+            // Also connect when Enter is pressed in the URL input
+            serverUrlInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    connectWebSocket();
+                }
+            });
+            
             micButton.addEventListener('mousedown', () => {
                 startRecording();
             });
@@ -589,7 +689,8 @@
                     order_id: `ORD-${Date.now()}`,
                     pickup: 'Suria KLCC',
                     dropoff: 'Mid Valley Megamall',
-                    fare: '15.00 MYR'
+                    fare: '15.00 MYR',
+                    number_of_pax: 2
                 });
             });
             
@@ -601,9 +702,11 @@
                 });
             });
             
-            // Initialize app
-            connectWebSocket();
+            // Initialize audio (but don't connect automatically)
             initAudio();
+            
+            // Display a message in console for debugging
+            console.log('DAX Assistant Demo initialized. Ready to connect.');
         });
     </script>
 </body>
